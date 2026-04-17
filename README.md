@@ -21,7 +21,8 @@ The codebase is organized by task domain. Image segmentation code is available n
 
 ```
 pmt/
-├── requirements.txt          # shared dependencies
+├── pyproject.toml            # uv project metadata and dependencies
+├── .python-version           # pinned Python version for uv
 ├── image/                    # image segmentation
 ├── video/                    # video segmentation (coming soon)
 ├── model_zoo/                # pre-trained weight catalogues
@@ -32,25 +33,19 @@ pmt/
 
 ## Installation
 
-If you don't have Conda installed, install Miniconda and restart your shell:
+If you don't have `uv` installed yet, follow the official installation instructions at <https://docs.astral.sh/uv/getting-started/installation/>.
+
+Then install Python and sync the project environment:
 
 ```bash
-wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
-bash Miniconda3-latest-Linux-x86_64.sh
-```
-
-Then create the environment, activate it, and install the dependencies:
-
-```bash
-conda create -n pmt python==3.13.2
-conda activate pmt
-python3 -m pip install -r requirements.txt
+uv python install 3.13.2
+uv sync
 ```
 
 [Weights & Biases](https://wandb.ai/) (wandb) is used for experiment logging and visualization. To enable wandb, log in to your account:
 
 ```bash
-wandb login
+uv run wandb login
 ```
 
 ## Data Preparation
@@ -65,7 +60,7 @@ wandb login
 To train PMT from scratch, run:
 
 ```bash
-python3 image/main.py fit \
+uv run python image/main.py fit \
   -c image/configs/coco/panoptic/pmt_l_640.yaml \
   --trainer.devices 4 \
   --data.batch_size 4 \
@@ -94,7 +89,7 @@ To fine-tune a pre-trained PMT model, add:
 To evaluate a pre-trained PMT model, run:
 
 ```bash
-python3 image/main.py validate \
+uv run python image/main.py validate \
   -c image/configs/coco/panoptic/pmt_l_640.yaml \
   --model.network.masked_attn_enabled False \
   --trainer.devices 4 \

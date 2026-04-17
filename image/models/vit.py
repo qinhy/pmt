@@ -12,6 +12,55 @@ import torch.nn as nn
 import timm
 from transformers import AutoModel
 
+def parameter_to_buffer(
+    module: nn.Module,
+    name: str,
+    *,
+    clone: bool = True,
+    persistent: bool = True,
+):
+    p = getattr(module, name)
+
+    if not isinstance(p, nn.Parameter):
+        raise TypeError(f"{name!r} is not an nn.Parameter")
+
+    t = p.detach()
+    if clone:
+        t = t.clone()
+
+    # Remove from registered parameters
+    delattr(module, name)
+
+    # Re-register under the same name as a buffer
+    module.register_buffer(name, t, persistent=persistent)
+    return module
+
+
+def freeze_module_as_buffers(
+    module: nn.Module,
+    *,
+    clone: bool = True,
+    persistent: bool = True,
+):
+    """
+    Convert every parameter in `module` (including all child submodules)
+    into a buffer under the same attribute name.
+
+    Returns:
+        list[str]: parameter names (relative to `module`) that were converted
+    """
+    # Snapshot names first, because we are going to mutate registrations
+    names = [name for name, _ in module.named_parameters(recurse=True)]
+
+    for full_name in names:
+        *parts, leaf = full_name.split(".")
+        submod = module
+        for part in parts:
+            submod = getattr(submod, part)
+        parameter_to_buffer(submod, leaf, clone=clone, persistent=persistent)
+
+    return names
+
 class ViT(nn.Module):
     def __init__(
         self,
@@ -76,10 +125,11 @@ class ViT(nn.Module):
 
     def freeze_encoder(self):
         """Freeze the backbone encoder parameters."""
-        for param in self.backbone.parameters():
-            param.requires_grad = False
+        # for param in self.backbone.parameters():
+        #     param.requires_grad = False
 
-        self.backbone.eval()
+        # self.backbone.eval()
+        # freeze_module_as_buffers(self)
 
         if int(os.environ.get("LOCAL_RANK", 0)) == 0:
             logging.info("Backbone encoder frozen.")

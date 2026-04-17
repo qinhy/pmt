@@ -34,16 +34,23 @@ from torch.nn.functional import interpolate
 from torchvision.transforms.v2.functional import pad
 import logging
 
+from models.pmt import PMT
 from training.warmup_cosine_schedule import WarmupCosineSchedule
 
 bold_green = "\033[1;32m"
 reset = "\033[0m"
 
+class LightningModuleResult:
+    def __init__(self,res):
+        # mask_logits, class_logits, (bbox_logits)
+        self.mask_logits = res[0]
+        self.class_logits = res[1]
+        self.bbox_logits = res[2] if len(res) == 3 else None
 
 class LightningModule(lightning.LightningModule):
     def __init__(
         self,
-        network: nn.Module,
+        network: PMT,
         img_size: tuple[int, int],
         num_classes: int,
         attn_mask_annealing_enabled: bool,
@@ -158,22 +165,24 @@ class LightningModule(lightning.LightningModule):
     def forward(self, imgs):
         x = imgs / 255.0
 
-        return self.network(x)
+        return self.network.forward(x)
 
     def training_step(self, batch, batch_idx):
         imgs, targets = batch
 
-        mask_logits_per_block, class_logits_per_block = self(imgs)
-
+        res = self(imgs) # mask_logits_per_layers, class_logits_per_layers, (bbox_logits_per_layers)
         losses_all_blocks = {}
-        for i, (mask_logits, class_logits) in enumerate(
-            list(zip(mask_logits_per_block, class_logits_per_block))
-        ):
-            losses = self.criterion(
-                masks_queries_logits=mask_logits,
-                class_queries_logits=class_logits,
-                targets=targets,
-            )
+        for i, item in enumerate(list(zip(*res))):
+            item = LightningModuleResult(item)
+            criterion_args = {
+                "masks_queries_logits":item.mask_logits,
+                "class_queries_logits":item.class_logits,
+                "targets":targets,
+            }
+            if item.bbox_logits is not None:
+                criterion_args["box_queries_preds"] = item.bbox_logits.sigmoid()
+
+            losses = self.criterion(**criterion_args)
             block_postfix = self.block_postfix(i)
             losses = {f"{key}{block_postfix}": value for key, value in losses.items()}
             losses_all_blocks |= losses

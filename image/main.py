@@ -18,6 +18,7 @@ from lightning.pytorch.callbacks import ModelSummary, LearningRateMonitor
 from lightning.pytorch.loops.training_epoch_loop import _TrainingEpochLoop
 from lightning.pytorch.loops.fetchers import _DataFetcher, _DataLoaderIterDataFetcher
 
+from models.vit import freeze_module_as_buffers
 from training.lightning_module import LightningModule
 from datasets.lightning_data_module import LightningDataModule
 from utils import suppress_warnings
@@ -143,8 +144,10 @@ class LightningCLI(cli.LightningCLI):
             _should_check_val_fx, self.trainer.fit_loop.epoch_loop
         )
 
-        if not self.config[self.config["subcommand"]]["compile_disabled"]:
-            model = torch.compile(model)
+        # if not self.config[self.config["subcommand"]]["compile_disabled"]:
+        #     model = torch.compile(model)
+        if model.network.encoder.is_frozen:
+            freeze_module_as_buffers(model.network.encoder)
 
         self.trainer.fit(model, **kwargs)
 

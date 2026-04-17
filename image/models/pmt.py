@@ -3,11 +3,12 @@
 # Licensed under the MIT License.
 # ---------------------------------------------------------------
 
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Union
 import torch
 import torch.nn as nn
 from models.layers import DINOv3ViTRopePositionEmbedding
 from models.pmd import PlainMaskDecoder
+from models.original_pmd import PlainMaskDecoder as PlainMaskDecoderBbox
 
 
 class PMT(nn.Module):
@@ -24,6 +25,7 @@ class PMT(nn.Module):
         residual_projection: bool = True,
         hidden_dim: Optional[int] = None,
         fuse_decoder_qkv: bool = False,
+        enable_bbox: bool = False,
     ):
         super().__init__()
         self.encoder = encoder
@@ -54,7 +56,7 @@ class PMT(nn.Module):
                 patch_size = self.encoder.backbone.patch_embed.patch_size[0],
             )
 
-        self.decoder = PlainMaskDecoder(
+        self.decoder = (PlainMaskDecoder if not enable_bbox else PlainMaskDecoderBbox)(
             embed_dim = self.encoder.backbone.embed_dim,
             hidden_dim = hidden_dim,
             num_prefix_tokens = self.encoder.backbone.num_prefix_tokens,
@@ -147,10 +149,8 @@ class PMT(nn.Module):
 
         return normed_features, rope
 
-    def forward(
-        self,
-        x: torch.Tensor,
-    ) -> Tuple[List[torch.Tensor], List[torch.Tensor]]:
+    def forward(self,x: torch.Tensor):
+
         x = (x - self.encoder.pixel_mean) / self.encoder.pixel_std
 
         # ========== ENCODER FORWARD ==========
@@ -162,7 +162,8 @@ class PMT(nn.Module):
             rope = self.rope(x)
 
         # ========== DECODER FORWARD ==========
+        return self.decoder.forward(outputs, rope)
+    
+        # mask_logits_per_layer, class_logits_per_layer = self.decoder(outputs, rope)
 
-        mask_logits_per_layer, class_logits_per_layer = self.decoder(outputs, rope)
-
-        return mask_logits_per_layer, class_logits_per_layer
+        # return mask_logits_per_layer, class_logits_per_layer
